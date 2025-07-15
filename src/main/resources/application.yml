@@ -15,6 +15,12 @@ spring:
   data:
     jdbc:
       dialect: postgresql
+
+cert:
+  thresholds:
+    critical: 7
+    warning: 30
+    notice: 90
 #  docker:
 #    compose:
 #      enabled: true
