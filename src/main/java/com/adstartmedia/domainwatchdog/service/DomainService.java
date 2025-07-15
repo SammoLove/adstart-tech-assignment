@@ -4,9 +4,12 @@ import com.adstartmedia.domainwatchdog.model.Domain;
 import com.adstartmedia.domainwatchdog.repository.DomainRepository;
 import org.apache.logging.log4j.util.Strings;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import java.util.stream.StreamSupport;
 
 @Service
 public class DomainService {
@@ -19,18 +22,25 @@ public class DomainService {
         this.domainStatusService = domainStatusService;
     }
 
+    @Transactional
     public void addDomains(Iterable<Domain> domains) throws IllegalArgumentException {
         for (Domain domain : domains) {
             validate(domain.getName());
         }
-        domainStatusService.updateFor(domains);
         repository.saveAll(domains);
+
+        List<String> domainNames = StreamSupport.stream(domains.spliterator(), false)
+                .map(Domain::getName)
+                .toList();
+        domainStatusService.updateFor(domainNames);
     }
 
+    @Transactional(readOnly = true)
     public Iterable<Domain> getAllDomains() {
         return repository.findAll();
     }
 
+    @Transactional(readOnly = true)
     public Optional<Domain> getByName(String name) throws IllegalArgumentException {
         if (Strings.isNotBlank(name)) {
             return repository.findById(name);

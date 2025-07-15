@@ -15,21 +15,9 @@ spring:
   data:
     jdbc:
       dialect: postgresql
-
 cert:
-  thresholds:
+  threshold:
     critical: 7
-    warning: 30
-    notice: 90
-#  docker:
-#    compose:
-#      enabled: true
-#      file:
-#        - docker/docker-compose.db.yml
-
-#jakarta:
-#  persistence:
-#    jdbc:
-#      url:      ${DATASOURCE_URL}
-#      user:     ${DATASOURCE_USERNAME}
-#      password: ${DATASOURCE_PASSWORD}
+    warning:  30
+    notice:   90
+    # It's possible to make it got from env vars from outside
