@@ -1,1 +1,155 @@
-TODO
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Infrastructure for Domain Expiry Monitoring Service
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  ImageUrl:
+    Type: String
+    Description: Docker image URL for Java app
+  DatabaseMasterPassword:
+    NoEcho: true
+    Type: String
+    MinLength: 8
+    MaxLength: 40
+    AllowedPattern: '[a-zA-Z0-9]*'
+Resources:
+
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access for ECS tasks
+      VpcId: !Ref VpcId
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      EngineVersion: 17.5
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 10
+      MasterUsername: app
+      MasterUserPassword: !Ref DatabaseMasterPassword
+      VPCSecurityGroups:
+        - !GetAtt AppSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for RDS
+      SubnetIds: !Ref Subnets
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/domain-app
+      RetentionInDays: 14
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: domain-app-task
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: domain-app
+          Image: !Ref ImageUrl
+          PortMappings:
+            - ContainerPort: 8080
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/domain-app
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: domain
+
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref Subnets
+          SecurityGroups:
+            - !Ref AppSecurityGroup
+          AssignPublicIp: ENABLED
+      TaskDefinition: !Ref TaskDefinition
+
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: DomainExpiryTopic
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:*
+                  - sns:Publish
+                Resource: "*"
+
+  DomainExpiryNotifierLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: CheckDomainExpiry
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Code:
+        S3Bucket: your-lambda-code-bucket
+        S3Key: domain-check-lambda.zip
+      Environment:
+        Variables:
+          API_URL: http://<ECS_PUBLIC_ENDPOINT>/api/v1/domains
+          SNS_TOPIC_ARN: !Ref SNSTopic
+
+  Rule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(1 day)
+      Targets:
+        - Arn: "DomainExpiryNotifierLambda"
+          Id: LambdaTarget
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: "DomainExpiryNotifierLambda"
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt Rule.Arn
