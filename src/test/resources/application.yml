@@ -1,7 +1,6 @@
 spring:
   datasource:
-    url: jdbc:TODO
-    driver-class-name: TODO
+    url: jdbc:h2:mem:testdb
   jpa:
     hibernate:
       ddl-auto: create-drop

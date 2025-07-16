@@ -15,9 +15,9 @@ import java.util.stream.StreamSupport;
 public class DomainService {
     private static final Pattern DOMAIN_NAME_PATTERN = Pattern.compile("(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]");
     private final DomainRepository repository;
-    private final DomainStatusService domainStatusService;
+    private final AbstractDomainStatusService domainStatusService;
 
-    public DomainService(DomainRepository repository, DomainStatusService domainStatusService) {
+    public DomainService(DomainRepository repository, AbstractDomainStatusService domainStatusService) {
         this.repository = repository;
         this.domainStatusService = domainStatusService;
     }
@@ -49,7 +49,7 @@ public class DomainService {
         }
     }
 
-    private void validate(String name) throws IllegalArgumentException {
+    void validate(String name) throws IllegalArgumentException {
         if (Strings.isBlank(name)) {
             throw new IllegalArgumentException("Domain name is null or empty");
         }

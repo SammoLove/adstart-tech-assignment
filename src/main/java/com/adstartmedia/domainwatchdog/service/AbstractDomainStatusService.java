@@ -8,41 +8,31 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
-import java.net.URI;
-import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.concurrent.TimeUnit;
 
-@Service
-public class DomainStatusService {
-    private static final Logger log = LoggerFactory.getLogger(DomainStatusService.class);
+public abstract class AbstractDomainStatusService {
+    private static final Logger log = LoggerFactory.getLogger(AbstractDomainStatusService.class);
     private final DomainRepository repository;
-    private final SSLSocketFactory insecureSocketFactory;
-    private final HostnameVerifier insecureHostnameVerifier;
     private final int criticalThresholdDays;
     private final int warningThresholdDays;
     private final int noticeThresholdDays;
+    private final Clock clock;
 
-    public DomainStatusService(
+    public AbstractDomainStatusService(
             DomainRepository repository,
-            SSLSocketFactory insecureSocketFactory,
-            HostnameVerifier insecureHostnameVerifier,
+            Clock clock,
             @Value("${cert.threshold.critical}") int criticalThresholdDays,
             @Value("${cert.threshold.warning}") int warningThresholdDays,
             @Value("${cert.threshold.notice}") int noticeThresholdDays) {
 
         this.repository = repository;
-        this.insecureSocketFactory = insecureSocketFactory;
-        this.insecureHostnameVerifier = insecureHostnameVerifier;
+        this.clock = clock;
         this.criticalThresholdDays = criticalThresholdDays;
         this.warningThresholdDays = warningThresholdDays;
         this.noticeThresholdDays = noticeThresholdDays;
@@ -79,30 +69,13 @@ public class DomainStatusService {
         }
     }
 
-    private X509Certificate fetchLeafCertificate(String domainName) throws IOException {
-        URI uri = URI.create("https://" + domainName);
-        HttpsURLConnection conn = (HttpsURLConnection) uri.toURL().openConnection();
-        conn.setSSLSocketFactory(insecureSocketFactory);
-        conn.setHostnameVerifier(insecureHostnameVerifier);
-        conn.setConnectTimeout((int) TimeUnit.SECONDS.toMillis(5));
-        conn.setReadTimeout((int) TimeUnit.SECONDS.toMillis(5));
-        try {
-            conn.connect();
-            Certificate[] certs = conn.getServerCertificates();
-            if (certs == null || certs.length == 0) {
-                throw new IOException("No certificates found for domain: " + domainName);
-            }
-            return (X509Certificate) conn.getServerCertificates()[0];
-        } finally {
-            conn.disconnect();
-        }
-    }
+    protected abstract X509Certificate fetchLeafCertificate(String domainName) throws IOException;
 
-    private ExpirationStatus determineStatus(Instant expiry) {
+    ExpirationStatus determineStatus(Instant expiry) {
         if (expiry == null) {
             return ExpirationStatus.UNKNOWN;
         }
-        Instant now = Instant.now();
+        Instant now = Instant.now(clock);
         long daysUntilExpiry = ChronoUnit.DAYS.between(now, expiry);
         if (expiry.isBefore(now)) {
             return ExpirationStatus.EXPIRED;
