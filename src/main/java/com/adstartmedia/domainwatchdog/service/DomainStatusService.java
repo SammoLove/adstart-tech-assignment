@@ -11,10 +11,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.net.ssl.SSLPeerUnverifiedException;
-import javax.net.ssl.SSLSocket;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLSocketFactory;
-import java.net.InetSocketAddress;
+import java.io.IOException;
+import java.net.URI;
+import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -24,17 +26,23 @@ import java.util.concurrent.TimeUnit;
 public class DomainStatusService {
     private static final Logger log = LoggerFactory.getLogger(DomainStatusService.class);
     private final DomainRepository repository;
+    private final SSLSocketFactory insecureSocketFactory;
+    private final HostnameVerifier insecureHostnameVerifier;
     private final int criticalThresholdDays;
     private final int warningThresholdDays;
     private final int noticeThresholdDays;
 
     public DomainStatusService(
             DomainRepository repository,
+            SSLSocketFactory insecureSocketFactory,
+            HostnameVerifier insecureHostnameVerifier,
             @Value("${cert.threshold.critical}") int criticalThresholdDays,
             @Value("${cert.threshold.warning}") int warningThresholdDays,
             @Value("${cert.threshold.notice}") int noticeThresholdDays) {
 
         this.repository = repository;
+        this.insecureSocketFactory = insecureSocketFactory;
+        this.insecureHostnameVerifier = insecureHostnameVerifier;
         this.criticalThresholdDays = criticalThresholdDays;
         this.warningThresholdDays = warningThresholdDays;
         this.noticeThresholdDays = noticeThresholdDays;
@@ -48,34 +56,45 @@ public class DomainStatusService {
         repository.saveAll(allDomains);
     }
 
-    //@Scheduled(cron = "@daily")
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "@daily")
     @Transactional
     void dailyCheck() {
+        log.info("Daily domain status checking started.");
         Iterable<Domain> allDomains = repository.findAll();
         allDomains.forEach(this::findOutStatus);
         repository.saveAll(allDomains);
+        log.info("Daily domain status checking finished.");
     }
 
     private void findOutStatus(Domain domain) {
-        try (SSLSocket socket = (SSLSocket) SSLSocketFactory.getDefault().createSocket()) {
-            socket.connect(new InetSocketAddress(domain.getName(), 443), (int) TimeUnit.SECONDS.toMillis(10));
-            socket.startHandshake();
-
-            X509Certificate[] certs = (X509Certificate[]) socket.getSession().getPeerCertificates();
-            X509Certificate cert = certs[0];
-            Instant expiry = cert.getNotAfter().toInstant();
-
+        try {
+            X509Certificate leafCertificate = fetchLeafCertificate(domain.getName());
+            Instant expiry = leafCertificate.getNotAfter().toInstant();
             domain.setExpirationTime(expiry);
             domain.setExpirationStatus(determineStatus(expiry));
-        } catch (SSLPeerUnverifiedException e) {
-            log.warn("SSL verification failed for domain: " + domain, e);
+        } catch (IOException e) {
+            log.error("Error retrieving certificate for domain: " + domain.getName(), e); //or use fluent api, but there's more lines
             domain.setExpirationTime(null);
             domain.setExpirationStatus(ExpirationStatus.UNKNOWN);
-        } catch (Exception e) {
-            log.warn("Error retrieving certificate for domain: " + domain, e);
-            domain.setExpirationTime(null);
-            domain.setExpirationStatus(ExpirationStatus.UNKNOWN);
+        }
+    }
+
+    private X509Certificate fetchLeafCertificate(String domainName) throws IOException {
+        URI uri = URI.create("https://" + domainName);
+        HttpsURLConnection conn = (HttpsURLConnection) uri.toURL().openConnection();
+        conn.setSSLSocketFactory(insecureSocketFactory);
+        conn.setHostnameVerifier(insecureHostnameVerifier);
+        conn.setConnectTimeout((int) TimeUnit.SECONDS.toMillis(5));
+        conn.setReadTimeout((int) TimeUnit.SECONDS.toMillis(5));
+        try {
+            conn.connect();
+            Certificate[] certs = conn.getServerCertificates();
+            if (certs == null || certs.length == 0) {
+                throw new IOException("No certificates found for domain: " + domainName);
+            }
+            return (X509Certificate) conn.getServerCertificates()[0];
+        } finally {
+            conn.disconnect();
         }
     }
 
