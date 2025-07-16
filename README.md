@@ -42,34 +42,92 @@ DATASOURCE_PASSWORD=App!Pswd;DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:${DB_PO
 
 
 ---------
-### Using application guide (TODO or remove)
-
+### Using application guide
+There three endpoints:
+1. Add, save and process a bunch of domains
+```
+POST {{host}}/api/v1/domains
+Body example:
+[
+        {"name": "adstartmedia.com"},
+        {"name": "amazon.com"},
+        {"name": "test-ev-rsa.ssl.com"},
+        {"name": "expired-rsa-dv.ssl.com"},
+        {"name": "mailbase.eu"},
+        {"name": "mail.albijjar.com"}
+]
+Returns 201
+```
+2. Getting all domains with results we have
+```
+GET {{host}}/api/v1/domains
+Returns f.i. JSON array like this:
+[
+    {
+        "name": "adstartmedia.com",
+        "expirationTime": "2026-03-08T23:59:59Z",
+        "expirationStatus": "OK"
+    },
+    {
+        "name": "amazon.com",
+        "expirationTime": "2026-06-19T23:59:59Z",
+        "expirationStatus": "OK"
+    },
+    {
+        "name": "test-ev-rsa.ssl.com",
+        "expirationTime": "2026-07-05T16:06:04Z",
+        "expirationStatus": "OK"
+    },
+    {
+        "name": "expired-rsa-dv.ssl.com",
+        "expirationTime": "2016-08-02T20:48:30Z",
+        "expirationStatus": "EXPIRED"
+    },
+    {
+        "name": "mailbase.eu",
+        "expirationTime": "2025-08-21T06:36:54Z",
+        "expirationStatus": "NOTICE"
+    },
+    {
+        "name": "mail.albijjar.com",
+        "expirationTime": "2025-08-24T11:19:47Z",
+        "expirationStatus": "NOTICE"
+    }
+]
+```
+3. Getting one
+```
+GET {{host}}/api/v1/domains/expired-rsa-dv.ssl.com
+Returns f.i. 
+{
+    "name": "expired-rsa-dv.ssl.com",
+    "expirationTime": "2016-08-02T20:48:30Z",
+    "expirationStatus": "EXPIRED"
+}
+```
 
 ### Project Structure
+```
 domain‑watchdog/
-├── .env           ← сюда
 ├── cloudformation/
 │   ├── domain-watchdog.yml
 │   └── README.md
+│
 ├── docker/
-│   └── docker‑compose.yml
-        todo
-│  
-└── gradle/
-└── src/
-└── 
-
-
-
-The following guides illustrate how to use some features concretely:
-
-* [Building a RESTful Web Service](https://spring.io/guides/gs/rest-service/)
-* [Serving Web Content with Spring MVC](https://spring.io/guides/gs/serving-web-content/)
-* [Building REST services with Spring](https://spring.io/guides/tutorials/rest/)
-* [Accessing Data with JPA](https://spring.io/guides/gs/accessing-data-jpa/)
-
-### Additional Links
-
-These additional references should also help you:
-
-* [Gradle Build Scans – insights for your project's build](https://scans.gradle.com#gradle)
+│   ├── docker‑compose.yml
+│   ├── docker‑compose.prod.yml
+│   ├── docker‑compose.db.yml
+│   ├── .env
+│   └── clean-postgres-start.sh
+│
+├── src/
+│   ├── main/
+│   └── test/
+│
+├── gradle/
+│
+├── pom.xml
+├── build.gradle
+├── .env
+└── README.md
+```

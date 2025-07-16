@@ -1,6 +1,7 @@
 package com.adstartmedia.domainwatchdog.service;
 
 import com.adstartmedia.domainwatchdog.repository.DomainRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.net.ssl.HostnameVerifier;
@@ -23,9 +24,9 @@ public class HttpsDomainStatusServiceImpl extends AbstractDomainStatusService {
             SSLSocketFactory insecureSocketFactory,
             HostnameVerifier insecureHostnameVerifier,
             Clock clock,
-            int criticalThresholdDays,
-            int warningThresholdDays,
-            int noticeThresholdDays) {
+            @Value("${cert.threshold.critical}") int criticalThresholdDays,
+            @Value("${cert.threshold.warning}") int warningThresholdDays,
+            @Value("${cert.threshold.notice}") int noticeThresholdDays) {
 
         super(repository, clock, criticalThresholdDays, warningThresholdDays, noticeThresholdDays);
         this.insecureSocketFactory = insecureSocketFactory;
