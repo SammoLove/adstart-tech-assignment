@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: domain-watchdog
+  datasource:
+    url:      ${DATASOURCE_URL}
+    username: ${DATASOURCE_USERNAME}
+    password: ${DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    jdbc:
+      dialect: postgresql
+cert:
+  threshold:
+    critical: 7
+    warning:  30
+    notice:   90
+    # It's possible to make it got from env vars from outside
